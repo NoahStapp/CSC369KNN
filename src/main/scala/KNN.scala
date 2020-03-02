@@ -9,13 +9,14 @@ case class Data(sepLen : Double, sepWid : Double, petLen : Double, petWid : Doub
 case class Category(category : String)
 
 class KNN(var neighbors: Int) extends Serializable {
-  def fit(X: RDD[Data], y : RDD[Category]) : Unit = {
-    X.cartesian(X)
-      .map({case (a, b) => (a, distance(a, b))})
-      .sortBy(_._2)
+  def fit(X: RDD[Data], y : RDD[Category], Xtest: RDD[Data]) : Unit = {
+    Xtest.cartesian(X)
+      .map({case (a, b) => (a, (b.category, distance(a, b)))})
+      .sortBy(_._2._2)
       .groupByKey()
       .mapValues(v => v.take(neighbors))
       .collect()
+      .map({case (x,y) => (x, y.map(row => row._1).groupBy(identity).mapValues(_.size).maxBy(_._2)._1)})
       .foreach(println)
   }
 //  def predict(Xtest: RDD[Data]): Array[Double] = {
@@ -50,6 +51,6 @@ object KNN {
 
     val model = new KNN(9)
 
-    model.fit(data, categories)
+    model.fit(data, categories, data)
   }
 }
