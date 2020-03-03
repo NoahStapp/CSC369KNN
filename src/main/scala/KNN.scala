@@ -52,7 +52,7 @@ object KNN {
     Logger.getLogger("org").setLevel(Level.OFF)
     Logger.getLogger("akka").setLevel(Level.OFF)
 
-    val conf = new SparkConf().setAppName("Asgn5").setMaster("local[4]")
+    val conf = new SparkConf().setAppName("KNN").setMaster("local[4]")
     val sc = new SparkContext(conf)
 
     val data = sc.textFile("./data/iris.csv")
@@ -75,14 +75,16 @@ object KNN {
     model.fit(Xtrain, ytrain, Xtest)
   }
 
-  def train_test_split(X: RDD[Data], y: RDD[Category], frac: Double): (RDD[Data],RDD[Category], RDD[Data],RDD[Category]) = {
-    val Xtrain = X.sample(false, frac);
-    val Xtrain_idx = Xtrain.map(line => (line.idx, line))
-    val ytrain = y.map(line => (line.idx, line)).join(Xtrain_idx).map({case(idx, pair) => pair._1})
-    val Xtest = X.subtract(Xtrain)
-    val ytest = y.subtract(ytrain)
+  // Split data and classifications into training and testing data
+  def train_test_split(X: RDD[Data], y: RDD[Category], frac: Double): (RDD[Data], RDD[Category], RDD[Data], RDD[Category]) = {
+    val Xtrain = X.sample(withReplacement = false, frac) // Get a sample of data to train on
+    val Xtrain_idx = Xtrain.map(line => (line.idx, line)) // Get the indexes of the training set
+    val ytrain = y.map(line => (line.idx, line))
+      .join(Xtrain_idx).map({case(_, pair) => pair._1}) // Get a sample of classifications to train on
+    val Xtest = X.subtract(Xtrain) // All non-training data is test data
+    val ytest = y.subtract(ytrain) // All non-training classifications are test classifications
 
-    return (Xtrain, ytrain, Xtest, ytest);
+    (Xtrain, ytrain, Xtest, ytest)
   }
 
 
