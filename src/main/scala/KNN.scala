@@ -53,7 +53,7 @@ object KNN {
     Logger.getLogger("org").setLevel(Level.OFF)
     Logger.getLogger("akka").setLevel(Level.OFF)
 
-    val conf = new SparkConf().setAppName("Asgn5").setMaster("local[4]")
+    val conf = new SparkConf().setAppName("KNN").setMaster("local[4]")
     val sc = new SparkContext(conf)
 
     val data = sc.textFile("./data/iris.csv")
