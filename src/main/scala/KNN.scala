@@ -6,22 +6,22 @@ import org.apache.log4j.Logger
 import org.apache.log4j.Level
 
 case class Data(sepLen : Double, sepWid : Double, petLen : Double, petWid : Double, category : String)
-case class Category(category : String)
+case class Category(category : String) {
+  override def toString : String = return category
+}
 
 class KNN(var neighbors: Int) extends Serializable {
-  def fit(X: RDD[Data], y : RDD[Category], Xtest: RDD[Data]) : Unit = {
-    Xtest.cartesian(X)
+  def fit(X: RDD[Data], y : RDD[Category], Xtest: RDD[Data]) : Array[(Data, String)] = {
+    val result = Xtest.cartesian(X)
       .map({case (a, b) => (a, (b.category, distance(a, b)))})
-      .sortBy(_._2._2)
+      .sortBy(_._2._2) // sort by distance between a and b
       .groupByKey()
       .mapValues(v => v.take(neighbors))
       .collect()
       .map({case (x,y) => (x, y.map(row => row._1).groupBy(identity).mapValues(_.size).maxBy(_._2)._1)})
-      .foreach(println)
+    return result
+
   }
-//  def predict(Xtest: RDD[Data]): Array[Double] = {
-//    // Predict X test
-//  }
   def distance(a : Data, b : Data) : Double = {
     var dist = 0.0;
     dist += Math.pow(a.sepLen - b.sepLen, 2.0)
@@ -51,6 +51,51 @@ object KNN {
 
     val model = new KNN(9)
 
-    model.fit(data, categories, data)
+    val result = model.fit(data, categories, data)
+    result.foreach(println)
+
+    // accuracy
+    val correct_classifications = result.count({
+      case (actual, category_prediction) => actual.category == category_prediction
+    })
+
+    val total_classifications = result.length
+
+    val accuracy = correct_classifications * 1.0 / total_classifications
+    println("Accuracy: " + accuracy)
+
+    // precision
+    for (cat <- categories.distinct()) {
+      // filter results for those PREDICTED to be in this category
+      val filtered = result.filter({
+        case (actual, category_prediction) => category_prediction == cat.toString
+      })
+
+      // filter results where prediction for this category was correct (True Positive)
+      val true_positives = filtered.filter({
+        case (actual, category_prediction) => actual.category == category_prediction
+      })
+
+      val precision = true_positives.length * 1.0 / filtered.length
+
+      println("Precision for " + cat.toString + "is " + precision)
+    }
+
+    // recall
+    for (cat <- categories.distinct()) {
+      // filter results for those ACTUALLY to be in this category
+      val filtered = result.filter({
+        case (actual, category_prediction) => actual.category == cat.toString // only difference is this line
+      })
+
+      // filter results where prediction for this category was correct (True Positive)
+      val true_positives = filtered.filter({
+        case (actual, category_prediction) => actual.category == category_prediction
+      })
+
+      val recall = true_positives.length * 1.0 / filtered.length
+
+      println("Recall for " + cat.toString + "is " + recall)
+    }
   }
 }
