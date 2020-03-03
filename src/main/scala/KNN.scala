@@ -7,16 +7,18 @@ import org.apache.log4j.Level
 import scala.util.Random
 
 
-case class Data(idx: Long, sepLen : Double, sepWid : Double, petLen : Double, petWid : Double, category : String)
+case class Data(idx: Long, sepLen : Double, sepWid : Double, petLen : Double, petWid : Double)
 case class Category(idx: Long, category : String) {
   override def toString : String = category
 }
 
 class KNN(var neighbors: Int) extends Serializable {
   // Fit a K-Nearest-Neighbors model with Spark RDD's
-  def fit(X: RDD[Data], y : RDD[Category], Xtest: RDD[Data]) : Array[(Data, String)] = {
-    Xtest.cartesian(X)
-      .map({case (a, b) => (a, (b.category, distance(a, b)))}) // Get each row's distance to every other row
+  def fit(X: RDD[Data], y : RDD[Category], Xtest: RDD[Data]) : Unit = {
+    val y_indexed = y.map(line => (line.idx, line))
+    val XY_indexed = X.map(line => (line.idx,line)).join(y_indexed)
+    Xtest.cartesian(XY_indexed)
+      .map({case (a, b) => (a, (b._2._2.category, distance(a, b._2._1)))}) // Get each row's distance to every other row
       .sortBy({case (_, b) => b._2}) // Sort by lowest distance first
       .groupByKey() // Group by row
       .mapValues(v => v.take(neighbors)) // Get the N nearest neighbor categories
@@ -57,12 +59,12 @@ object KNN {
     val sc = new SparkContext(conf)
 
     val data = sc.textFile("./data/iris.csv")
-       .map(_.split(",")).zipWithIndex()
-       .map({ case (line, idx) => Data(idx, line(0).toDouble, line(1).toDouble, line(2).toDouble, line(3).toDouble, line(4)) })
+      .map(_.split(",")).zipWithIndex()
+      .map({case(line, idx) => Data(idx, line(0).toDouble, line(1).toDouble, line(2).toDouble, line(3).toDouble)})
 
     val categories = sc.textFile("./data/iris.csv")
-       .map(_.split(",")).zipWithIndex()
-       .map({ case (line, idx) => Category(idx, line(4)) })
+      .map(_.split(",")).zipWithIndex()
+      .map({case(line,idx) => Category(idx, line(4))})
 
     val model = new KNN(9)
 
