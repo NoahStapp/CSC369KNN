@@ -5,8 +5,11 @@ import org.apache.spark.rdd._
 import org.apache.log4j.Logger
 import org.apache.log4j.Level
 
-case class Data(sepLen : Double, sepWid : Double, petLen : Double, petWid : Double, category : String)
-case class Category(category : String)
+import scala.util.Random
+
+
+case class Data(idx: Long, sepLen : Double, sepWid : Double, petLen : Double, petWid : Double, category : String)
+case class Category(idx: Long, category : String)
 
 class KNN(var neighbors: Int) extends Serializable {
   def fit(X: RDD[Data], y : RDD[Category], Xtest: RDD[Data]) : Unit = {
@@ -30,7 +33,6 @@ class KNN(var neighbors: Int) extends Serializable {
     dist += Math.pow(a.petWid - b.petWid, 2.0)
     dist
   }
-
 }
 
 object KNN {
@@ -42,15 +44,35 @@ object KNN {
     val sc = new SparkContext(conf)
 
     val data = sc.textFile("./data/iris.csv")
-      .map(_.split(","))
-      .map(line => Data(line(0).toDouble, line(1).toDouble, line(2).toDouble, line(3).toDouble, line(4)))
+      .map(_.split(",")).zipWithIndex()
+      .map({case(line, idx) => Data(idx, line(0).toDouble, line(1).toDouble, line(2).toDouble, line(3).toDouble, line(4))})
 
     val categories = sc.textFile("./data/iris.csv")
-      .map(_.split(","))
-      .map(line => Category(line(4)))
+      .map(_.split(",")).zipWithIndex()
+      .map({case(line,idx) => Category(idx,line(4))})
 
     val model = new KNN(9)
 
-    model.fit(data, categories, data)
+    val split_data = train_test_split(data, categories, 0.5)
+
+    val Xtrain = split_data._1
+    val ytrain = split_data._2
+    val Xtest = split_data._3
+    val ytest = split_data._4
+
+    model.fit(Xtrain, ytrain, Xtest)
   }
+
+  def train_test_split(X: RDD[Data], y: RDD[Category], frac: Double): (RDD[Data],RDD[Category], RDD[Data],RDD[Category]) = {
+    val Xtrain = X.sample(false, frac);
+    val Xtrain_idx = Xtrain.map(line => (line.idx, line))
+    val ytrain = y.map(line => (line.idx, line)).join(Xtrain_idx).map({case(idx, pair) => pair._1})
+    val Xtest = X.subtract(Xtrain)
+    val ytest = y.subtract(ytrain)
+
+    return (Xtrain, ytrain, Xtest, ytest);
+  }
+
+
+
 }
