@@ -14,7 +14,7 @@ case class Category(idx: Long, category : String) {
 
 class KNN(var neighbors: Int) extends Serializable {
   // Fit a K-Nearest-Neighbors model with Spark RDD's
-  def fit(X: RDD[Data], y : RDD[Category], Xtest: RDD[Data]) : Unit = {
+  def fit(X: RDD[Data], y : RDD[Category], Xtest: RDD[Data]) : Array[(Data, String)] = {
     val y_indexed = y.map(line => (line.idx, line))
     val XY_indexed = X.map(line => (line.idx,line)).join(y_indexed)
     Xtest.cartesian(XY_indexed)
@@ -79,13 +79,16 @@ object KNN {
     result.foreach(println)
 
     // accuracy
-    println(accuracy(result, categories.collect()))
+    println(accuracy(result, ytest.collect()))
 
     // precision
-    println(precision(result, categories.collect()))
+    println(precision(result, ytest.collect()))
 
     // recall
-    println(recall(result, categories.collect()))
+    println(recall(result, ytest.collect()))
+
+    //f1
+    println(f1_score(result, ytest.collect()))
   }
 
   def train_test_split(X: RDD[Data], y: RDD[Category], frac: Double): (RDD[Data], RDD[Category], RDD[Data], RDD[Category]) = {
@@ -98,62 +101,99 @@ object KNN {
     return (Xtrain, ytrain, Xtest, ytest)
   }
 
-  def accuracy(result : Array[(Data, String)], categories : Array[Category]) : Double = {
-    val correct_classifications = result.count({
-      case (actual, category_prediction) => actual.category == category_prediction
+  def accuracy(result : Array[(Data, String)], ytest : Array[Category]) : Double = {
+    val ypred_tuple = result.map({case( data, pred) => (data.idx, pred)})
+    val ytest_tuple = ytest.map(line => (line.idx, line.category))
+    val ypred_ytest = ( ypred_tuple ++ ytest_tuple ).
+      groupBy( _._1 ).
+      map(list_tuple_pair => list_tuple_pair._2).
+      map(tuple_pair => (tuple_pair(0), tuple_pair(1)))
+
+
+    val correct_classifications = ypred_ytest.count({
+      case(pred, actual) => pred._2 == actual._2
     })
 
     val total_classifications = result.length
 
     val accuracy = correct_classifications * 1.0 / total_classifications
 
+
     return accuracy
   }
 
-  def precision(result : Array[(Data, String)], categories : Array[Category]) : scala.collection.mutable.Map[String, Double] = {
+  def precision(result : Array[(Data, String)], ytest : Array[Category]) : scala.collection.mutable.Map[String, Double] = {
+    val categories = result.map(pred => pred._2).distinct
     val precision_map = scala.collection.mutable.Map[String, Double]()
     val category_strings = categories.map(_.toString).distinct
+
+    val ypred_tuple = result.map({case( data, pred) => (data.idx, pred)})
+    val ytest_tuple = ytest.map(line => (line.idx, line.category))
+    val ypred_ytest = ( ypred_tuple ++ ytest_tuple ).
+      groupBy( _._1 ).
+      map(list_tuple_pair => list_tuple_pair._2).
+      map(tuple_pair => (tuple_pair(0), tuple_pair(1)))
+
     for (cat <- category_strings) {
       // filter results for those PREDICTED to be in this category
-      val filtered = result.filter({
-        case (actual, category_prediction) => category_prediction == cat
+      val filtered = ypred_ytest.filter({
+        case (pred, actual) => pred._2 == cat
       })
 
       // filter results where prediction for this category was correct (True Positive)
       val true_positives = filtered.filter({
-        case (actual, category_prediction) => actual.category == category_prediction
+        case (pred, actual) => pred._2 == actual._2
       })
 
-      val precision = true_positives.length * 1.0 / filtered.length
+
+      val precision = true_positives.size * 1.0 / filtered.size
 
       precision_map += (cat -> precision)
     }
     return precision_map
   }
 
-  def recall(result : Array[(Data, String)], categories : Array[Category]) : scala.collection.mutable.Map[String, Double] = {
-    var recall_map = scala.collection.mutable.Map[String, Double]()
+  def recall(result : Array[(Data, String)], ytest : Array[Category]) : scala.collection.mutable.Map[String, Double] = {
+    val categories = result.map(pred => pred._2).distinct
+    val recall_map = scala.collection.mutable.Map[String, Double]()
     val category_strings = categories.map(_.toString).distinct
+
+    val ypred_tuple = result.map({case( data, pred) => (data.idx, pred)})
+    val ytest_tuple = ytest.map(line => (line.idx, line.category))
+    val ypred_ytest = ( ypred_tuple ++ ytest_tuple ).
+      groupBy( _._1 ).
+      map(list_tuple_pair => list_tuple_pair._2).
+      map(tuple_pair => (tuple_pair(0), tuple_pair(1)))
+
     for (cat <- category_strings) {
-      // filter results for those ACTUALLY in this category
-      val filtered = result.filter({
-        // only difference between precision and recall is this line
-        case (actual, category_prediction) => actual.category == cat
+      // filter results for those PREDICTED to be in this category
+      val filtered = ypred_ytest.filter({
+        case (pred, actual) => actual._2 == cat
       })
 
-      // filter results where ACTUAL for this category was correct (True Positive)
+      // filter results where prediction for this category was correct (True Positive)
       val true_positives = filtered.filter({
-        case (actual, category_prediction) => actual.category == category_prediction
+        case (pred, actual) => pred._2 == actual._2
       })
 
-      val recall = true_positives.length * 1.0 / filtered.length
 
-      recall_map += (cat -> recall)
+      val precision = true_positives.size * 1.0 / filtered.size
+
+      recall_map += (cat -> precision)
     }
     return recall_map
   }
 
-  def f1_score(precisionScore : Double, recallScore : Double) : Double = {
-    return (2*precisionScore*recallScore)/(precisionScore+recallScore)
+  def f1_score(result : Array[(Data, String)], ytest : Array[Category]) : scala.collection.mutable.Map[String, Double] = {
+    val precisionScore = precision(result, ytest)
+    val recallScore = recall(result, ytest)
+    val categories = result.map(pred => pred._2).distinct
+    val category_strings = categories.map(_.toString).distinct
+    val f1_map = scala.collection.mutable.Map[String, Double]()
+    for (cat <- category_strings) {
+      f1_map += (cat -> (2*precisionScore(cat)*recallScore(cat))/(precisionScore(cat)+recallScore(cat)))
+    }
+
+    return f1_map
   }
 }
