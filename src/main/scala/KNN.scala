@@ -133,7 +133,7 @@ object KNN {
     var recall_map = scala.collection.mutable.Map[String, Double]()
     val category_strings = categories.map(_.toString).distinct
     for (cat <- category_strings) {
-      // filter results for those PREDICTED to be in this category
+      // filter results for those ACTUALLY in this category
       val filtered = result.filter({
         // only difference between precision and recall is this line
         case (actual, category_prediction) => actual.category == cat
