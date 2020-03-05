@@ -64,13 +64,16 @@ object KNN {
       .map({case(line, idx) => Data(idx, line(1), getTotalFunding(line(5).trim()), line(11).toDouble, line(18).toDouble,
         line(19).toDouble, line(32).toDouble, line(33).toDouble)}).sample(false, 0.01)
 
+    val data_idx = data.map(line => (line.idx, line))
+
     val categories = sc.textFile("./data/investments.csv")
       .map(_.split(",(?=([^\\\"]*\\\"[^\\\"]*\\\")*[^\\\"]*$)")).zipWithIndex()
-      .map({case(line,idx) => Classification(idx, line(6))}).filter(_.status.length > 0).sample(false ,0.01)
+      .map({case(line,idx) => Classification(idx, line(6))}).map(line => (line.idx,line))
+      .join(data_idx).map({case (_, pair) => pair._1})
 
     val normalized_data = normalize(data)
 
-    val model = new KNN(9)
+    val model = new KNN(5)
 
     val split_data = train_test_split(normalized_data, categories, 0.5)
 
@@ -97,6 +100,7 @@ object KNN {
 
     //cross_validate
     println(cross_validate(model, data, categories, 5, "recall"))
+
   }
   def extractDouble(x: Any): Option[Double] = x match {
     case n: java.lang.Number => Some(n.doubleValue())
@@ -205,7 +209,9 @@ object KNN {
   def accuracy(result : Array[(Data, String)], ytest : Array[Classification]) : Double = {
     val ypred_tuple = result.map({case( data, pred) => (data.idx, pred)})
     val ytest_tuple = ytest.map(line => (line.idx, line.status))
-
+    (ypred_tuple ++ ytest_tuple)
+      .groupBy(_._1)
+      .values.foreach(x=>println(x.mkString(" ")))
     val ypred_ytest = (ypred_tuple ++ ytest_tuple)
       .groupBy(_._1)
       .values
@@ -224,7 +230,7 @@ object KNN {
   }
 
   def precision(result : Array[(Data, String)], ytest : Array[Classification]) : scala.collection.mutable.Map[String, Double] = {
-    val categories = result.map(pred => pred._2).distinct
+    val categories = ytest.map(pred => pred.status).distinct
     val precision_map = scala.collection.mutable.Map[String, Double]()
     val category_strings = categories.map(_.toString).distinct
 
@@ -257,7 +263,7 @@ object KNN {
   }
 
   def recall(result : Array[(Data, String)], ytest : Array[Classification]) : scala.collection.mutable.Map[String, Double] = {
-    val categories = result.map(pred => pred._2).distinct
+    val categories = ytest.map(pred => pred.status).distinct
     val recall_map = scala.collection.mutable.Map[String, Double]()
     val category_strings = categories.map(_.toString).distinct
 
@@ -292,7 +298,7 @@ object KNN {
   def f1_score(result : Array[(Data, String)], ytest : Array[Classification]) : scala.collection.mutable.Map[String, Double] = {
     val precisionScore = precision(result, ytest)
     val recallScore = recall(result, ytest)
-    val categories = result.map(pred => pred._2).distinct
+    val categories = ytest.map(pred => pred.status).distinct
     val category_strings = categories.map(_.toString).distinct
     val f1_map = scala.collection.mutable.Map[String, Double]()
     for (cat <- category_strings) {
