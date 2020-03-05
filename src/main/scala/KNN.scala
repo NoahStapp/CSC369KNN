@@ -5,7 +5,8 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.rdd._
 import org.apache.log4j.Logger
 import org.apache.log4j.Level
-import scala.util.Random
+import scala.collection.mutable.ListBuffer
+
 
 
 case class Data(idx: Long, name: String, totalFunding : Double, rounds : Double, seed : Double, venture : Double, roundA: Double, roundB: Double)
@@ -28,10 +29,6 @@ class KNN(var neighbors: Int) extends Serializable {
       .map({case (a, b) => (a, get_category(b.toList))}) // Get the most likely category for each row
       .collect()
   }
-
-//  def predict(Xtest: RDD[Data]): Array[Double] = {
-//    // Predict X test
-//  }
 
   // Gets the most likely category from a list of category-distance pairs
   def get_category(distances : List[(String, Double)]) : String = {
@@ -97,6 +94,13 @@ object KNN {
 
     //f1
     println(f1_score(result, ytest.collect()))
+
+    //cross_validate
+    println(cross_validate(model, data, categories, 5, "recall"))
+  }
+  def extractDouble(x: Any): Option[Double] = x match {
+    case n: java.lang.Number => Some(n.doubleValue())
+    case _ => None
   }
 
   // Get the total funding from a weirdly formatted string
@@ -144,9 +148,63 @@ object KNN {
     (Xtrain, ytrain, Xtest, ytest)
   }
 
+  def cross_validate(model: KNN, X: RDD[Data], y: RDD[Classification], folds: Int, loss: String): Map[String, Double] = {
+    // Make (K, V) rows for convenient index slicing
+    val X_idx = X.map(line => (line.idx, line))
+    val y_idx = y.map(line => (line.idx, line))
+
+    // Get Partition size for eah fold
+    val partition_size = X.count()/folds
+    val losses = ListBuffer[(String, Double)]()
+
+    // For each fold compute the losses for each class and add to losses list
+    for (i <- 0 until folds){
+      // In this case I make the fold data the test data and the rest the training data
+      var X_fold_data = X_idx.filter({case(idx, line) => ((0 + partition_size * i) <= idx) && (idx <= (0 + partition_size * (i + 1)))}).map(tuple => tuple._2)
+      var X_non_fold_data = X_idx.filter({case(idx, line) => ((0 + partition_size * i) > idx) || (idx > (0 + partition_size * (i + 1)))}).map(tuple => tuple._2)
+
+      var y_fold_data = y_idx.filter({case(idx, line) => ((0 + partition_size * i) <= idx) && (idx <= (0 + partition_size * (i + 1)))}).map(tuple => tuple._2)
+      var y_non_fold_data = y_idx.filter({case(idx, line) => ((0 + partition_size * i) > idx) || (idx > (0 + partition_size * (i + 1)))}).map(tuple => tuple._2)
+
+      //ACCURACY IS RETURNING ANY FOR SOME REAONON >:-(
+      /*
+      if (loss == "accuracy"){
+        var result = model.fit(X_non_fold_data, y_non_fold_data, X_fold_data)
+        var accuracy = accuracy(result, y_fold_data.collect())
+        for (j <- categories.map(_.toString).distinct){
+          losses += ((j,accuracy))
+        }
+        losses += loss_val
+      }
+      */
+
+      if (loss == "recall"){
+        var result = model.fit(X_non_fold_data, y_non_fold_data, X_fold_data)
+        var loss_val = recall(result, y_fold_data.collect())
+        // Make the map into a Sequence of tuples (Class, Loss)
+        var loss_holder = loss_val.map(e => (e._1,e._2))
+        loss_val.map(e => (e._1,e._2)).foreach(e => losses += e)
+      }
+      else if (loss == "precision"){
+        var result = model.fit(X_non_fold_data, y_non_fold_data, X_fold_data)
+        // Make the map into a Sequence of tuples (Class, Loss)
+        var loss_val = precision(result, y_fold_data.collect())
+        loss_val.map(e => (e._1,e._2)).foreach(e => losses += e)
+      }
+      else if (loss == "f1"){
+        var result = model.fit(X_non_fold_data, y_non_fold_data, X_fold_data)
+        // Make the map into a Sequence of tuples (Class, Loss)
+        var loss_val = f1_score(result, y_fold_data.collect())
+        loss_val.map(e => (e._1,e._2)).foreach(e => losses += e)
+      }
+    }
+    // For each class return the mean from all the folds losses
+    return losses.groupBy(tuple => tuple._1).mapValues(map_val => map_val.map(value => value._2)).mapValues(loss_list => loss_list.foldLeft(0.0)(_ + _) / loss_list.length)
+  }
+
   def accuracy(result : Array[(Data, String)], ytest : Array[Classification]) : Double = {
-    val ypred_tuple = result.map({case (data, pred) => (data.idx, pred)})
-    val ytest_tuple = ytest.map(row => (row.idx, row.status))
+    val ypred_tuple = result.map({case( data, pred) => (data.idx, pred)})
+    val ytest_tuple = ytest.map(line => (line.idx, line.status))
 
     val ypred_ytest = (ypred_tuple ++ ytest_tuple)
       .groupBy(_._1)
@@ -159,7 +217,10 @@ object KNN {
 
     val total_classifications = result.length
 
-    correct_classifications * 1.0 / total_classifications
+    var accuracy = correct_classifications * 1.0 / total_classifications
+    if (accuracy.isNaN){accuracy = 0}
+
+    accuracy
   }
 
   def precision(result : Array[(Data, String)], ytest : Array[Classification]) : scala.collection.mutable.Map[String, Double] = {
@@ -186,7 +247,8 @@ object KNN {
       })
 
 
-      val precision = true_positives.size * 1.0 / filtered.size
+      var precision = true_positives.size * 1.0 / filtered.size
+      if (precision.isNaN){precision = 0}
 
       precision_map += (cat -> precision)
     }
@@ -218,9 +280,11 @@ object KNN {
       })
 
 
-      val precision = true_positives.size * 1.0 / filtered.size
+      var recall_val = true_positives.size * 1.0 / filtered.size
 
-      recall_map += (cat -> precision)
+      if (recall_val.isNaN){recall_val = 0}
+
+      recall_map += (cat -> recall_val)
     }
     recall_map
   }
