@@ -9,11 +9,9 @@ import scala.collection.mutable.ListBuffer
 
 
 
-case class Data(idx: Long, name: String, totalFunding : Double, rounds : Double, seed : Double, venture : Double, roundA: Double, roundB: Double)
-case class DataEncode(idx: Long, totalFunding : Int, rounds : Int, seed : Int, venture : Int, roundA: Int, roundB: Int,
-                      crowdFunding: Int, angel: Int, privateEquity: Int)
-case class Classification(idx: Long, status : String) {
-  override def toString : String = status
+case class Data(idx: Long, sepLen : Double, sepWid : Double, petLen : Double, petWid : Double)
+case class Classification(idx: Long, category : String) {
+  override def toString : String = category
 }
 
 class KNN(var neighbors: Int) extends Serializable {
@@ -22,7 +20,7 @@ class KNN(var neighbors: Int) extends Serializable {
     val y_indexed = y.map(line => (line.idx, line))
     val XY_indexed = X.map(line => (line.idx,line)).join(y_indexed)
     Xtest.cartesian(XY_indexed)
-      .map({case (a, b) => (a, (b._2._2.status, distance(a, b._2._1)))}) // Get each row's distance to every other row
+      .map({case (a, b) => (a, (b._2._2.category, distance(a, b._2._1)))}) // Get each row's distance to every other row
       .sortBy({case (_, b) => b._2}) // Sort by lowest distance first
       .groupByKey() // Group by row
       .mapValues(v => v.take(neighbors)) // Get the N nearest neighbor categories
@@ -41,16 +39,14 @@ class KNN(var neighbors: Int) extends Serializable {
   // Calculate the euclidean distance between two observations
   def distance(a : Data, b : Data) : Double = {
     var dist = 0.0;
-    dist += Math.pow(a.totalFunding - b.totalFunding, 2.0)
-    dist += Math.pow(a.rounds - b.rounds, 2.0)
-    dist += Math.pow(a.seed - b.seed, 2.0)
-    dist += Math.pow(a.venture - b.venture, 2.0)
-    dist += Math.pow(a.roundA - b.roundA, 2.0)
-    dist += Math.pow(a.roundB - b.roundB, 2.0)
-    Math.sqrt(dist)
+    dist += Math.pow(a.sepLen - b.sepLen, 2.0)
+    dist += Math.pow(a.sepWid - b.sepWid, 2.0)
+    dist += Math.pow(a.petLen - b.petLen, 2.0)
+    dist += Math.pow(a.petWid - b.petWid, 2.0)
+    dist
   }
 }
-
+/*
 class normalizer() {
   // Normalize data with minmax technique
   val scaler_info = ListBuffer[(Double, Double)]()
@@ -107,6 +103,7 @@ class normalizer() {
 
 
 }
+*/
 
 object KNN {
   def main(args: Array[String]): Unit = {
@@ -116,21 +113,15 @@ object KNN {
     val conf = new SparkConf().setAppName("KNN").setMaster("local[4]")
     val sc = new SparkContext(conf)
 
-    val data = sc.textFile("./data/investments.csv")
-      .map(_.split(",(?=([^\\\"]*\\\"[^\\\"]*\\\")*[^\\\"]*$)")).zipWithIndex()
-      .map({case(line, idx) => Data(idx, line(1), getTotalFunding(line(5).trim()), line(11).toDouble, line(18).toDouble,
-        line(19).toDouble, line(32).toDouble, line(33).toDouble)}).sample(false, 0.01)
+    val data = sc.textFile("./data/iris.csv")
+      .map(_.split(",")).zipWithIndex()
+      .map({case(line, idx) => Data(idx, line(0).toDouble, line(1).toDouble, line(2).toDouble, line(3).toDouble)})
 
-    val data_idx = data.map(line => (line.idx, line))
+    val categories = sc.textFile("./data/iris.csv")
+      .map(_.split(",")).zipWithIndex()
+      .map({case(line,idx) => Classification(idx, line(4))})
 
-    val categories = sc.textFile("./data/investments.csv")
-      .map(_.split(",(?=([^\\\"]*\\\"[^\\\"]*\\\")*[^\\\"]*$)")).zipWithIndex()
-      .map({case(line,idx) => Classification(idx, line(6))}).map(line => (line.idx,line))
-      .join(data_idx).map({case (_, pair) => pair._1})
-
-
-
-    var model = new KNN(5)
+    var model = new KNN(9)
 
     val split_data = train_test_split(data, categories, 0.5)
 
@@ -139,14 +130,7 @@ object KNN {
     val Xtest = split_data._3
     val ytest = split_data._4
 
-    val normalizer = new normalizer()
-    normalizer.fit(Xtrain)
-    val Xtrain_norm = normalizer.normalize(Xtrain)
-    val Xtest_norm = normalizer.normalize(Xtest)
-
-
-    val result = model.fit(Xtrain_norm, ytrain, Xtest_norm)
-
+    val result = model.fit(Xtrain, ytrain, Xtest)
     result.foreach(println)
 
     // accuracy
@@ -161,6 +145,7 @@ object KNN {
     //f1
     println(f1_score(result, ytest.collect()))
 
+
     //cross_validate
     val losses = List("recall","precision","f1")
     for (loss <- losses){
@@ -168,7 +153,7 @@ object KNN {
       for (neighbors <- 1 to 10) {
         println(neighbors)
         model = new KNN(neighbors)
-        println(cross_validate(model, data, categories, 5, loss))
+        println(cross_validate(model, data, categories, 2, loss))
       }
     }
 
@@ -228,12 +213,14 @@ object KNN {
         losses += loss_val
       }
       */
+      /*
       var normalizer = new normalizer()
       normalizer.fit(X_non_fold_data)
       var X_non_fold_data_norm = normalizer.normalize(X_non_fold_data)
       var X_fold_data_norm = normalizer.normalize(X_fold_data)
+      */
       if (loss == "recall"){
-        var result = model.fit(X_non_fold_data_norm, y_non_fold_data, X_fold_data_norm)
+        var result = model.fit(X_non_fold_data, y_non_fold_data, X_fold_data)
         var loss_val = recall(result, y_fold_data.collect())
         // Make the map into a Sequence of tuples (Class, Loss)
         var loss_holder = loss_val.map(e => (e._1,e._2))
@@ -258,7 +245,7 @@ object KNN {
 
   def accuracy(result : Array[(Data, String)], ytest : Array[Classification]) : Double = {
     val ypred_tuple = result.map({case( data, pred) => (data.idx, pred)})
-    val ytest_tuple = ytest.map(line => (line.idx, line.status))
+    val ytest_tuple = ytest.map(line => (line.idx, line.category))
     (ypred_tuple ++ ytest_tuple)
       .groupBy(_._1)
       .values.foreach(x=>println(x.mkString(" ")))
@@ -280,12 +267,12 @@ object KNN {
   }
 
   def precision(result : Array[(Data, String)], ytest : Array[Classification]) : scala.collection.mutable.Map[String, Double] = {
-    val categories = ytest.map(pred => pred.status).distinct
+    val categories = ytest.map(pred => pred.category).distinct
     val precision_map = scala.collection.mutable.Map[String, Double]()
     val category_strings = categories.map(_.toString).distinct
 
     val ypred_tuple = result.map({case( data, pred) => (data.idx, pred)})
-    val ytest_tuple = ytest.map(line => (line.idx, line.status))
+    val ytest_tuple = ytest.map(line => (line.idx, line.category))
     val ypred_ytest = (ypred_tuple ++ ytest_tuple)
       .groupBy(_._1)
       .values
@@ -313,12 +300,12 @@ object KNN {
   }
 
   def recall(result : Array[(Data, String)], ytest : Array[Classification]) : scala.collection.mutable.Map[String, Double] = {
-    val categories = ytest.map(pred => pred.status).distinct
+    val categories = ytest.map(pred => pred.category).distinct
     val recall_map = scala.collection.mutable.Map[String, Double]()
     val category_strings = categories.map(_.toString).distinct
 
     val ypred_tuple = result.map({case( data, pred) => (data.idx, pred)})
-    val ytest_tuple = ytest.map(line => (line.idx, line.status))
+    val ytest_tuple = ytest.map(line => (line.idx, line.category))
     val ypred_ytest = (ypred_tuple ++ ytest_tuple).
       groupBy(_._1)
       .values
@@ -348,7 +335,7 @@ object KNN {
   def f1_score(result : Array[(Data, String)], ytest : Array[Classification]) : scala.collection.mutable.Map[String, Double] = {
     val precisionScore = precision(result, ytest)
     val recallScore = recall(result, ytest)
-    val categories = ytest.map(pred => pred.status).distinct
+    val categories = ytest.map(pred => pred.category).distinct
     val category_strings = categories.map(_.toString).distinct
     val f1_map = scala.collection.mutable.Map[String, Double]()
     for (cat <- category_strings) {
