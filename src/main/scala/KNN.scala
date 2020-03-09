@@ -151,9 +151,10 @@ object KNN {
     for (loss <- losses){
       println(loss)
       for (neighbors <- 1 to 10) {
-        println(neighbors)
         model = new KNN(neighbors)
-        println(cross_validate(model, data, categories, 2, loss))
+        var test = cross_validate(model, data, categories, 2, loss)
+        println(neighbors + "," + test.map(x=> x._2).map(x => x).mkString(", "))
+        //println(cross_validate(model, data, categories, 2, loss))
       }
     }
 
