@@ -51,6 +51,63 @@ class KNN(var neighbors: Int) extends Serializable {
   }
 }
 
+class normalizer() {
+  // Normalize data with minmax technique
+  val scaler_info = ListBuffer[(Double, Double)]()
+  def fit(data: RDD[Data]) : Unit = {
+    val maxFunding = data.takeOrdered(1)(Ordering[Double].reverse.on(_.totalFunding))(0).totalFunding
+    val minFunding = data.takeOrdered(1)(Ordering[Double].on(_.totalFunding))(0).totalFunding
+    val maxRounds = data.takeOrdered(1)(Ordering[Double].reverse.on(_.rounds))(0).rounds
+    val minRounds = data.takeOrdered(1)(Ordering[Double].on(_.rounds))(0).rounds
+    val maxSeed = data.takeOrdered(1)(Ordering[Double].reverse.on(_.seed))(0).seed
+    val minSeed = data.takeOrdered(1)(Ordering[Double].on(_.seed))(0).seed
+    val maxVenture = data.takeOrdered(1)(Ordering[Double].reverse.on(_.venture))(0).venture
+    val minVenture = data.takeOrdered(1)(Ordering[Double].on(_.venture))(0).venture
+    val maxA = data.takeOrdered(1)(Ordering[Double].reverse.on(_.roundA))(0).roundA
+    val minA = data.takeOrdered(1)(Ordering[Double].on(_.roundA))(0).roundA
+    val maxB = data.takeOrdered(1)(Ordering[Double].reverse.on(_.roundB))(0).roundB
+    val minB = data.takeOrdered(1)(Ordering[Double].on(_.roundB))(0).roundB
+    val funding_tuple = (maxFunding,minFunding)
+    val round_tuple = (maxRounds,minRounds)
+    val seed_tuple = (maxSeed,minSeed)
+    val venture_tuple = (maxVenture,minVenture)
+    val a_tuple = (maxA,minA)
+    val b_tuple = (maxB, minB)
+
+    scaler_info += funding_tuple
+    scaler_info += round_tuple
+    scaler_info += seed_tuple
+    scaler_info += venture_tuple
+    scaler_info += a_tuple
+    scaler_info += b_tuple
+
+  }
+  def normalize(data: RDD[Data]) : RDD[Data] = {
+    val maxFunding = scaler_info(0)._1
+    val minFunding = scaler_info(0)._2
+    val maxRounds = scaler_info(1)._1
+    val minRounds = scaler_info(1)._2
+    val maxSeed = scaler_info(2)._1
+    val minSeed = scaler_info(2)._2
+    val maxVenture = scaler_info(3)._1
+    val minVenture = scaler_info(3)._2
+    val maxA = scaler_info(4)._1
+    val minA = scaler_info(4)._2
+    val maxB = scaler_info(5)._1
+    val minB = scaler_info(5)._2
+
+    data.map(rec => Data(rec.idx, rec.name,
+      (rec.totalFunding - minFunding) / (maxFunding - minFunding),
+      (rec.rounds - minRounds) / (maxRounds - minRounds),
+      (rec.seed - minSeed) / (maxSeed - minSeed),
+      (rec.venture - minVenture) / (maxVenture - minVenture),
+      (rec.roundA - minA) / (maxA - minA),
+      (rec.roundB - minB) / (maxB - minB)))
+  }
+
+
+}
+
 object KNN {
   def main(args: Array[String]): Unit = {
     Logger.getLogger("org").setLevel(Level.OFF)
@@ -71,18 +128,24 @@ object KNN {
       .map({case(line,idx) => Classification(idx, line(6))}).map(line => (line.idx,line))
       .join(data_idx).map({case (_, pair) => pair._1})
 
-    val normalized_data = normalize(data)
 
-    val model = new KNN(5)
 
-    val split_data = train_test_split(normalized_data, categories, 0.5)
+    var model = new KNN(5)
+
+    val split_data = train_test_split(data, categories, 0.5)
 
     val Xtrain = split_data._1
     val ytrain = split_data._2
     val Xtest = split_data._3
     val ytest = split_data._4
 
-    val result = model.fit(Xtrain, ytrain, Xtest)
+    val normalizer = new normalizer()
+    normalizer.fit(Xtrain)
+    val Xtrain_norm = normalizer.normalize(Xtrain)
+    val Xtest_norm = normalizer.normalize(Xtest)
+
+
+    val result = model.fit(Xtrain_norm, ytrain, Xtest_norm)
 
     result.foreach(println)
 
@@ -99,7 +162,15 @@ object KNN {
     println(f1_score(result, ytest.collect()))
 
     //cross_validate
-    println(cross_validate(model, data, categories, 5, "recall"))
+    val losses = List("recall","precision","f1")
+    for (loss <- losses){
+      println(loss)
+      for (neighbors <- 1 to 10) {
+        println(neighbors)
+        model = new KNN(neighbors)
+        println(cross_validate(model, data, categories, 5, loss))
+      }
+    }
 
   }
   def extractDouble(x: Any): Option[Double] = x match {
@@ -115,30 +186,6 @@ object KNN {
     funding.replaceAll(",", "")
       .replaceAll("^\"+|\"+$", "")
       .trim().toDouble
-  }
-
-  // Normalize data with minmax technique
-  def normalize(data: RDD[Data]) : RDD[Data] = {
-    val maxFunding = data.takeOrdered(1)(Ordering[Double].reverse.on(_.totalFunding))(0).totalFunding
-    val minFunding = data.takeOrdered(1)(Ordering[Double].on(_.totalFunding))(0).totalFunding
-    val maxRounds = data.takeOrdered(1)(Ordering[Double].reverse.on(_.rounds))(0).rounds
-    val minRounds = data.takeOrdered(1)(Ordering[Double].on(_.rounds))(0).rounds
-    val maxSeed = data.takeOrdered(1)(Ordering[Double].reverse.on(_.seed))(0).seed
-    val minSeed = data.takeOrdered(1)(Ordering[Double].on(_.seed))(0).seed
-    val maxVenture = data.takeOrdered(1)(Ordering[Double].reverse.on(_.venture))(0).venture
-    val minVenture = data.takeOrdered(1)(Ordering[Double].on(_.venture))(0).venture
-    val maxA = data.takeOrdered(1)(Ordering[Double].reverse.on(_.roundA))(0).roundA
-    val minA = data.takeOrdered(1)(Ordering[Double].on(_.roundA))(0).roundA
-    val maxB = data.takeOrdered(1)(Ordering[Double].reverse.on(_.roundB))(0).roundB
-    val minB = data.takeOrdered(1)(Ordering[Double].on(_.roundB))(0).roundB
-
-    data.map(rec => Data(rec.idx, rec.name,
-      (rec.totalFunding - minFunding) / (maxFunding - minFunding),
-      (rec.rounds - minRounds) / (maxRounds - minRounds),
-      (rec.seed - minSeed) / (maxSeed - minSeed),
-      (rec.venture - minVenture) / (maxVenture - minVenture),
-      (rec.roundA - minA) / (maxA - minA),
-      (rec.roundB - minB) / (maxB - minB)))
   }
 
   def train_test_split(X: RDD[Data], y: RDD[Classification], frac: Double):
@@ -181,9 +228,12 @@ object KNN {
         losses += loss_val
       }
       */
-
+      var normalizer = new normalizer()
+      normalizer.fit(X_non_fold_data)
+      var X_non_fold_data_norm = normalizer.normalize(X_non_fold_data)
+      var X_fold_data_norm = normalizer.normalize(X_fold_data)
       if (loss == "recall"){
-        var result = model.fit(X_non_fold_data, y_non_fold_data, X_fold_data)
+        var result = model.fit(X_non_fold_data_norm, y_non_fold_data, X_fold_data_norm)
         var loss_val = recall(result, y_fold_data.collect())
         // Make the map into a Sequence of tuples (Class, Loss)
         var loss_holder = loss_val.map(e => (e._1,e._2))
