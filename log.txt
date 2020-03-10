@@ -12,9 +12,10 @@ Time: 1.5 hours
 
 Who: Anish Yakkala
 
-What: 
+What: Splitting the data into random partitions in order
+to do proper evaluation done in a ML pipeline
 
-Time:
+Time: 1 hour
 
 3. Loss functions
 
@@ -26,11 +27,13 @@ Time:
 
 4. Cross Validation
 
-Who: 
+Who: Anish Yakkala 
 
-What: 
+What: Create a K-fold Cross Validaton function to properly evaluate
+and hypertune our KNN-Classifier model. Also properly normalizes
+the data when changing folds.
 
-Time:
+Time: 3 hours
 
 5. Picking dataset
 
@@ -44,9 +47,10 @@ Time: 1.0 hours
 
 Who: Anish Yakkala
 
-What: 
+What: Plotting results from Cross Validation run by writing results
+to a text file and plotting them through matplotlib on Python
 
-Time:
+Time: 1 hour
 
 7. Reports
 
