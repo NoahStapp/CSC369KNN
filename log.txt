@@ -2,70 +2,56 @@ Tasks
 
 1. KNN class
 
-Who:
+Who: Noah Stapp
 
-What: 
+What: Fit and distance functions
 
-When
-
-Time:
+Time: 1.5 hours
 
 2. train_test_split
 
-Who:
+Who: Anish Yakkala
 
 What: 
-
-When
 
 Time:
 
 3. Loss functions
 
-Who:
+Who: Lemar Popal
 
 What: 
-
-When
 
 Time:
 
 4. Cross Validation
 
-Who:
+Who: 
 
 What: 
-
-When
 
 Time:
 
 5. Picking dataset
 
-Who:
+Who: Noah Stapp
 
-What: 
+What: Finding and selecting a dataset to show our project working well and our project struggling when it should
 
-When
-
-Time:
+Time: 1.0 hours
 
 6. Plotting
 
-Who:
+Who: Anish Yakkala
 
 What: 
-
-When
 
 Time:
 
 7. Reports
 
-Who:
+Who: Noah Stapp, Anish Yakkala, Lemar Popal
 
-What: 
+What: Writing and structuring the report
 
-When
-
-Time:
+Time: 1.5 hours
