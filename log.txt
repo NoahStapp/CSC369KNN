@@ -21,9 +21,10 @@ Time: 1 hour
 
 Who: Lemar Popal
 
-What: 
+What: Wrote functions to calculate precision, recall, and F1 score
+to evaluate model performance while testing. 
 
-Time:
+Time: 1.0 hours
 
 4. Cross Validation
 
